@@ -13,7 +13,6 @@ const r₁ = (0.1)*1e-6  # minimum droplet size bin, micron->m
 # .     we reserve the nought subscript for general parameters.
 const tmax = 3601 # seconds
 const Δt_plot = 30 # minutes
-const golovin_b = (1500)*1e-3 # Golovin collision coefficient, input cm³/g/s to -> m³/kg/s
 const gmin = 1e-60 # lower bound on permissible bin mass density
 
 ## Arrays
@@ -56,22 +55,22 @@ Given r₀ as the smallest bin, we can then solve that
   rᵢ = r₁ α^{(i-1)/3} s.t. i ∈ ℤ > 0
 
 =# 
-r_grid = r₁*(α.^((collect(1:n) .- 1)./3)) # meter
-x_grid = mass_from_r.(r_grid) # kg
+rᵢ = r₁*(α.^((collect(1:n) .- 1)./3)) # meter
+xᵢ = mass_from_r.(rᵢ) # kg
 
 # Initial droplet distribution; g(y, t) = 3x² * n(x, t), eq. 2 from B98 
-g2 = (3 .* x_grid.^2) .* nc.(x_grid, L=L, x̅=x̅) # kg / m3
+gᵢ = (3 .* xᵢ.^2) .* nc.(xᵢ, L=L, x̅=x̅) # kg / m3
 
-for i ∈ 1:n
-  e[i] = x_grid[i]
-  r[i] = r_grid[i]
-  g[i] = g2[i] 
-end
+# for i ∈ 1:n
+#   e[i] = xᵢ[i]
+#   r[i] = rᵢ[i]
+#   g[i] = g2[i]
+# end
 
 # Sanity check
 if debug
   for i ∈ 1:n
-    @printf "%10d %24g %24g %24g\n" i e[i]*1e6 r[i] g[i]
+    @printf "%10d %24g %24g %24g\n" i xᵢ[i]*1e6 rᵢ[i] gᵢ[i]
   end
 end
 
@@ -89,12 +88,12 @@ actual coad subroutine
 for i ∈ 1:n
   for j ∈ i:n
 
-    local x0 = e[i] + e[j]  # Summed / total mass from collision
+    local x0 = xᵢ[i] + xᵢ[j]  # Summed / total mass from collision
     for k ∈ j:n
-      if (e[k] ≥ x0) && (e[k-1] < x0) # There is probably an easier way to exploit the size of the collision here than linear searching for bounding masses
+      if (xᵢ[k] ≥ x0) && (xᵢ[k-1] < x0) # There is probably an easier way to exploit the size of the collision here than linear searching for bounding masses
         if (c[i, j] < (1 - 1e-8))
           kk = k - 1
-          c[i, j] = log(x0 / e[k-1]) / (3 * Δy)
+          c[i, j] = log(x0 / xᵢ[k-1]) / (3 * Δy)
         else
           c[i, j] = 0.0
           kk = k
@@ -130,7 +129,7 @@ end
 # cache kernel
 for j ∈ 1:n
   for i ∈ 1:j
-    cck[j, i] = golovin_b * (e[i] + e[j])
+    cck[j, i] = golovin_kernel(xᵢ[i], xᵢ[j])
     cck[i, j] = cck[j, i]
   end
 end
@@ -162,7 +161,7 @@ end
 
 # Plot initial conditions and then begin the time loop
 p = plot(
-  r*1e6, g*1e3, label="t = 0 min", 
+  rᵢ*1e6, gᵢ*1e3, label="t = 0 min", 
   xaxis=:log, xlim=(0.5, 5000), xlabel="r (μm)",
   xticks=[1, 10, 100, 1000],
   ylim=(0, 0.9), ylabel="g (g / m³)",
@@ -215,14 +214,14 @@ for i ∈ 1:nt
   i0 = 1
   for i ∈ 1:n-1
     i0 = i
-    if g[i] > gmin
+    if gᵢ[i] > gmin
       break
     end
   end
   i1 = n-1
   for i ∈ n-1:-1:1
     i1 = i
-    if g[i] > gmin
+    if gᵢ[i] > gmin
       break
     end
   end
@@ -240,36 +239,36 @@ for i ∈ 1:nt
         continue
       end
     
-      local x0 = ck[i, j] * g[i] * g[j]
-      x0 = min(x0, g[i] * e[j])
+      local x0 = ck[i, j] * gᵢ[i] * gᵢ[j]
+      x0 = min(x0, gᵢ[i] * xᵢ[j])
       if j != k # Not sure what's going on here.
-        local x0 = min(x0, g[j] * e[i])
+        local x0 = min(x0, gᵢ[j] * xᵢ[i])
       end
     
-      gsi = x0 / e[j]
-      gsj = x0 / e[i]
+      gsi = x0 / xᵢ[j]
+      gsj = x0 / xᵢ[i]
       gsk = gsi + gsj
-      g[i] = g[i] - gsi
+      gᵢ[i] = gᵢ[i] - gsi
       # if g[i] < 0
       #   @printf "WARNING - g[%d] = %e < 0 | %e \n" i g[i] gsi
       # end
-      g[j] = g[j] - gsj
+      gᵢ[j] = gᵢ[j] - gsj
       # if g[j] < 0
       #   @printf "WARNING - g[%d] = %e < 0 | %e \n" j g[j] gsj
       # end
-      gk = g[k] + gsk
+      gk = gᵢ[k] + gsk
 
       # @printf "a | (%3d, %3d) %13.6e %13.6e %13.6e\n" i j gsi gsj gsk
 
       if gk > gmin
-        x1 = log(g[kp] / gk + 1e-60)
+        x1 = log(gᵢ[kp] / gk + 1e-60)
         # @printf "x | %13.6e %13.6e %13.6e %13.6e\n" g[kp] g[k] gk x1
         flux = gsk / x1 * (exp(0.5 * x1) - exp(x1 * (0.5 - c[i, j])))
         # @printf "b | %13.6e %13.6e %13.6e %13.6e\n" x1 gk flux gsk
         flux = min(flux, gk)
         # @printf " %3d %3d %e %e\n" i j gk flux
-        g[k] = gk - flux
-        g[kp] = g[kp] + flux
+        gᵢ[k] = gk - flux
+        gᵢ[kp] = gᵢ[kp] + flux
       end
     
     end # j
@@ -281,7 +280,7 @@ for i ∈ 1:nt
     global lmin = lmin + 1
 
     if (lmin % Δt_plot) < 1
-      display(plot!(p, r*1e6, g*1e3, label = "t = $lmin min"))
+      display(plot!(p, rᵢ*1e6, gᵢ*1e3, label = "t = $lmin min"))
     end
 
     # Mass balance? Not sure what's going on here. Maybe numerical checking?
@@ -289,9 +288,9 @@ for i ∈ 1:nt
     x1 = 1.0
     imax = 0
     for i ∈ 1:n
-      x0 = x0 + g[i] * Δy
-      x1 = max(x1, g[i])
-      if abs(x1 - g[i]) < 1e-9
+      x0 = x0 + gᵢ[i] * Δy
+      x1 = max(x1, gᵢ[i])
+      if abs(x1 - gᵢ[i]) < 1e-9
         imax = i
       end
     end
@@ -305,9 +304,9 @@ for i ∈ 1:nt
   x1 = 1.0
   imax = 0
   for i ∈ 1:n
-    x0 = x0 + g[i] * Δy
-    x1 = max(x1, g[i])
-    if abs(x1 - g[i]) < 1e-9
+    x0 = x0 + gᵢ[i] * Δy
+    x1 = max(x1, gᵢ[i])
+    if abs(x1 - gᵢ[i]) < 1e-9
       imax = i
     end
   end
