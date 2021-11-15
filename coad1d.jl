@@ -4,7 +4,7 @@ using CPUTime
 using Plots
 using Printf
 
-const n = 221
+const m = 221
 # const emin = (1e-9) * 1e-6 # input mg convert to kg
 const r₁ = (0.1)*1e-6  # minimum droplet size bin, micron->m
 # NOTE: We use subscript "1" because Julia is a 1-indexed language. By convention
@@ -14,14 +14,13 @@ const gmin = 1e-60 # lower bound on permissible bin mass density
 ## Arrays
 # Common arrays
 # cour
-c = zeros(Float64, n, n) # Courant numbers for limiting advection flux
-ima = zeros(Int16, n, n) # This is basically keeping track of the left bound of the 
+c = zeros(Float64, m, m) # Courant numbers for limiting advection flux
+ima = zeros(Int16, m, m) # This is basically keeping track of the left bound of the 
 # bin that a particular collision on the mass grid will land in
 
 #kern 
-ck = zeros(Float64, n, n)
-ec = zeros(Float64, n, n)
-cck = zeros(Float64, n, n)
+ck = zeros(Float64, m, m)
+cck = zeros(Float64, m, m)
 
 ## Parameters / Configuration
 # Size Distribtion
@@ -69,7 +68,7 @@ Given r₀ as the smallest bin, we can then solve that
   rᵢ = r₁ α^{(i-1)/3} s.t. i ∈ ℤ > 0
 
 =# 
-rᵢ = r₁*(α.^((collect(1:n) .- 1)./3)) # meter
+rᵢ = r₁*(α.^((collect(1:m) .- 1)./3)) # meter
 xᵢ = mass_from_r.(rᵢ) # kg
 
 # Initial droplet distribution; g(y, t) = 3x² * n(x, t), eq. 2 from B98 
@@ -89,11 +88,11 @@ actual coad subroutine
 println("""
 COMPUTE COURANT LIMITS ON GRID""")
 CPUtic()
-for i ∈ 1:n
-  for j ∈ i:n
+for i ∈ 1:m
+  for j ∈ i:m
 
     local x0 = xᵢ[i] + xᵢ[j]  # Summed / total mass from collision
-    for k ∈ j:n
+    for k ∈ j:m
       if (xᵢ[k] ≥ x0) && (xᵢ[k-1] < x0) # There is probably an easier way to exploit the size of the collision here than linear searching for bounding masses
         if (c[i, j] < (1 - 1e-8))
           kk = k - 1
@@ -102,7 +101,7 @@ for i ∈ 1:n
           c[i, j] = 0.0
           kk = k
         end
-        ima[i, j] = min(n - 1, kk)
+        ima[i, j] = min(m - 1, kk)
         break
       end
     end # k loop
@@ -123,7 +122,7 @@ elapsed = CPUtoq()
 println("""
 COMPUTE COLLISION KERNELS ON GRID""")
 CPUtic()
-for j ∈ 1:n
+for j ∈ 1:m
   for i ∈ 1:j
 
     if kernel == :golovin
@@ -142,12 +141,12 @@ for j ∈ 1:n
 end # j
 
 # cache 2d interpolation on kernel vals
-for i ∈ 1:n
-  for j ∈ 1:n
+for i ∈ 1:m
+  for j ∈ 1:m
     jm = max(j - 1, 1)
     im = max(i - 1, 1)
-    jp = min(j + 1, n)
-    ip = min(i + 1, n)
+    jp = min(j + 1, m)
+    ip = min(i + 1, m)
     ck[i, j] = 0.125 * (
       cck[i, jm] + cck[im, j] + cck[ip, j] + cck[i, jp]
     )  + 0.5 * cck[i, j]
@@ -207,14 +206,14 @@ for i ∈ 1:nt
   # to get collided / advected around, so we don't waste cycles on empty bins.
   # In practice seems to be a limiter on numerical issues.
   i0 = 1
-  for i ∈ 1:n-1
+  for i ∈ 1:m-1
     i0 = i
     if gᵢ[i] > gmin
       break
     end
   end
-  i1 = n-1
-  for i ∈ n-1:-1:1
+  i1 = m-1
+  for i ∈ m-1:-1:1
     i1 = i
     if gᵢ[i] > gmin
       break
@@ -273,7 +272,7 @@ for i ∈ 1:nt
     x0 = 0.0
     x1 = 1.0
     imax = 0
-    for i ∈ 1:n
+    for i ∈ 1:m
       x0 = x0 + gᵢ[i] * Δy
       x1 = max(x1, gᵢ[i])
       if abs(x1 - gᵢ[i]) < 1e-9
@@ -289,7 +288,7 @@ for i ∈ 1:nt
   x0 = 0.0
   x1 = 1.0
   imax = 0
-  for i ∈ 1:n
+  for i ∈ 1:m
     x0 = x0 + gᵢ[i] * Δy
     x1 = max(x1, gᵢ[i])
     if abs(x1 - gᵢ[i]) < 1e-9
