@@ -17,7 +17,7 @@ x̅ = mass_from_r(r̅) # mean initial droplet mass (kg)
 L = (1.0)*1e-3 # total water content, g/m3 convert to kg/m3
 
 # Grid Spacing
-α = 2^(1/2) # Mass bin scaling ratio, 2^(1/n) where 'n' is the number of bins 
+α = 2^(1/4) # Mass bin scaling ratio, 2^(1/n) where 'n' is the number of bins 
             # between mass doubling
 
 m = ceil(Integer, 1 + 3*log(rm / r₁)/log(α)) # number of mass bins to populate
@@ -29,11 +29,11 @@ m = ceil(Integer, 1 + 3*log(rm / r₁)/log(α)) # number of mass bins to populat
 #   1) :golovin - Golovin (1963)
 #   2) :hydro - basic hydrodynamic kernel with unit coal/coll efficiency
 #   3) :long - Long collision efficiency
-kernel = :long 
+kernel = :golovin 
 
 # Time Integration
 tmax = 3601 # seconds
-Δt = 10.0 # s
+Δt = 5.0 # s
 Δt_plot = 10 # minutes
 nt = ceil(Integer, tmax / Δt)
 
@@ -237,19 +237,10 @@ function find_bounds(g; gmin=gmin)
   return i0, i1
 end
 
-println("""
-BEGIN TIME INTEGRATION
-""")
-CPUtic()
-for i ∈ 1:nt
-  global t = t + Δt
-  global tlmin = tlmin + Δt
-
-  # Collision
-  # subroutine coad
+function coad!(g, x, c, ck, ima; debug=false, gmin=gmin)
 
   # Lower and Upper integration limit i0, i1
-  i0, i1 = find_bounds(gᵢ, gmin=gmin)
+  i0, i1 = find_bounds(g, gmin=gmin)
 
   if debug
     @printf "DEBUG bnds_check %6d %8d %8d\n" t i0 i1
@@ -266,18 +257,18 @@ for i ∈ 1:nt
         continue
       end
     
-      local x0 = ck[i, j] * gᵢ[i] * gᵢ[j]
-      x0 = min(x0, gᵢ[i] * xᵢ[j])
+      x0 = ck[i, j] * g[i] * g[j]
+      x0 = min(x0, g[i] * x[j])
       if j != k # Not sure what's going on here.
-        local x0 = min(x0, gᵢ[j] * xᵢ[i])
+        x0 = min(x0, g[j] * x[i])
       end
     
-      gsi = x0 / xᵢ[j]
-      gsj = x0 / xᵢ[i]
+      gsi = x0 / x[j]
+      gsj = x0 / x[i]
       gsk = gsi + gsj
-      gᵢ[i] = gᵢ[i] - gsi
-      gᵢ[j] = gᵢ[j] - gsj
-      gk = gᵢ[k] + gsk
+      g[i] = g[i] - gsi
+      g[j] = g[j] - gsj
+      gk = g[k] + gsk
 
       if gk > gmin
 
@@ -287,18 +278,32 @@ for i ∈ 1:nt
         # MODIFIED - Apply a limiter to avoid negative args to log
         #   We note that this may not strictly obey the formulation of the flux
         #   algorithm, but this tends to work okay in practice.
-        log_arg = gᵢ[kp] / gk + 1e-60
+        log_arg = g[kp] / gk + 1e-60
         log_arg = max(1e-60, log_arg)
         x1 = log(log_arg)
 
         flux = gsk / x1 * (exp(0.5 * x1) - exp(x1 * (0.5 - c[i, j])))
         flux = min(flux, gk)
-        gᵢ[k] = gk - flux
-        gᵢ[kp] = gᵢ[kp] + flux
+        g[k] = gk - flux
+        g[kp] = g[kp] + flux
       end
-    
+  
     end # j
   end # i
+
+end
+
+println("""
+BEGIN TIME INTEGRATION
+""")
+CPUtic()
+for i ∈ 1:nt
+  global t = t + Δt
+  global tlmin = tlmin + Δt
+
+  # Collision
+  # subroutine coad
+  coad!(gᵢ, xᵢ, c, ck, ima, debug=debug, gmin=gmin)
 
   # Plotting
   if tlmin ≥ 60
