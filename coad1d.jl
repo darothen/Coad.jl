@@ -76,9 +76,7 @@ cached for retrieval as needed. This fact is used in combination with the fact
 that the same holds true for the collision kernel to pre-compute all the limits
 in the original code, as well as pre-estimate where collisions will land in the
 actual coad subroutine
-
 =#
-# subroutine courant -- inplace
 
 function courant(x)
   
@@ -86,11 +84,6 @@ function courant(x)
   m = length(x)
   c = zeros(Float64, m, m) # Courant numbers for limiting advection flux
   ima = zeros(Int16, m, m) # This is basically keeping track of the left bound of the 
-
-  # Grid spacing in ln radius -> directly compute from the mass grid that was
-  # passed in, since Δy = log(α) / 3
-  α = x[2] / x[1]
-  threeΔy = log(α)  # multiply term by 3 since we factor it out in the Courant calc
 
   # Compute Courant limits
   for i ∈ 1:m
@@ -101,7 +94,7 @@ function courant(x)
         if (x[k] ≥ x0) && (x[k-1] < x0) # There is probably an easier way to exploit the size of the collision here than linear searching for bounding masses
           if (c[i, j] < (1 - 1e-8))
             kk = k - 1
-            c[i, j] = log(x0 / x[k-1]) / threeΔy
+            c[i, j] = log(x0 / x[k-1])
           else
             c[i, j] = 0.0
             kk = k
@@ -124,13 +117,12 @@ println("""
 COMPUTE COURANT LIMITS ON GRID""")
 CPUtic()
 c, ima = courant(xᵢ)
+# Correct Courant numbers for grid spacing
+c = c / (3*Δy)
 elapsed = CPUtoq()
 @printf "%3.1f seconds elapsed\n" elapsed
 
-
-# Collision Kernel - we just use Golovin for now
-# subroutine trkern
-# cache kernel
+# Collision Kernel
 
 function kernels(x, kernel)
 
