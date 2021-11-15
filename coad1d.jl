@@ -4,23 +4,11 @@ using CPUTime
 using Plots
 using Printf
 
-const m = 221
-# const emin = (1e-9) * 1e-6 # input mg convert to kg
-const r₁ = (0.1)*1e-6  # minimum droplet size bin, micron->m
+const r₁ = (0.1)*1e-6 # minimum droplet size bin, micron->m
+const rm = (100_000.0)*1e-6 # maximum droplet size bin, micron->m
 # NOTE: We use subscript "1" because Julia is a 1-indexed language. By convention
 # .     we reserve the nought subscript for general parameters.
 const gmin = 1e-60 # lower bound on permissible bin mass density
-
-## Arrays
-# Common arrays
-# cour
-c = zeros(Float64, m, m) # Courant numbers for limiting advection flux
-ima = zeros(Int16, m, m) # This is basically keeping track of the left bound of the 
-# bin that a particular collision on the mass grid will land in
-
-#kern 
-ck = zeros(Float64, m, m)
-cck = zeros(Float64, m, m)
 
 ## Parameters / Configuration
 # Size Distribtion
@@ -29,11 +17,12 @@ x̅ = mass_from_r(r̅) # mean initial droplet mass (kg)
 L = (1.0)*1e-3 # total water content, g/m3 convert to kg/m3
 
 # Grid Spacing
-α = 2^(1/3) # Mass bin scaling ratio, 2^(1/n) where 'n' is the number of bins 
+α = 2^(1/2) # Mass bin scaling ratio, 2^(1/n) where 'n' is the number of bins 
             # between mass doubling
+
+m = ceil(Integer, 1 + 3*log(rm / r₁)/log(α)) # number of mass bins to populate
 Δy = Δlnr = log(α) / 3  # constant grid distance of logarithmic grid
-# TODO: Re-factor grid discretization here so that users can set a radius range
-#       and we can infer the number of grid steps based on that
+
 
 # Collision kernel
 # Options:
@@ -44,15 +33,25 @@ kernel = :long
 
 # Time Integration
 tmax = 3601 # seconds
-Δt = 5.0 # s
-Δt_plot = 30 # minutes
+Δt = 10.0 # s
+Δt_plot = 10 # minutes
 nt = ceil(Integer, tmax / Δt)
 
 # Other configs
 debug = false
-do_plots = false
+do_plots = true
 
 ## Model Setup
+
+## Arrays
+# cour
+c = zeros(Float64, m, m) # Courant numbers for limiting advection flux
+ima = zeros(Int16, m, m) # This is basically keeping track of the left bound of the 
+# bin that a particular collision on the mass grid will land in
+
+# kern 
+ck = zeros(Float64, m, m)
+cck = zeros(Float64, m, m)
 
 # Mass and Radius Grid
 #=
@@ -66,6 +65,11 @@ write simple, similar recurrence relationship in radius space:
 Given r₀ as the smallest bin, we can then solve that
 
   rᵢ = r₁ α^{(i-1)/3} s.t. i ∈ ℤ > 0
+
+Computing the number of grid cells...
+  ln rm > ln(r1) + ln(α) (m-1)/3
+  ln rm - ln r1 > ln α (m-1)/3
+  3 ln(rm / r1) / (ln α) > m - 1
 
 =# 
 rᵢ = r₁*(α.^((collect(1:m) .- 1)./3)) # meter
@@ -169,10 +173,10 @@ if do_plots
   println("Plotting initial conditions")
   p = plot(
     rᵢ*1e6, gᵢ*1e3, label="t = 0 min", 
-    xaxis=:log, xlim=(0.5, 5000), xlabel="r (μm)",
-    xticks=[1, 10, 100, 1000],
-    ylim=(0, 0.9), ylabel="g (g / m³)",
-    yticks=0:0.06:0.9
+    xaxis=:log, xlabel="r (μm)",
+    # xlim=(0.5, 5000), xticks=[1, 10, 100, 1000],
+    # ylim=(0, 0.9), yticks=0:0.06:0.9,
+    ylabel="g (g / m³)",
   )
   display(p)
 end
@@ -249,7 +253,17 @@ for i ∈ 1:nt
       gk = gᵢ[k] + gsk
 
       if gk > gmin
-        x1 = log(gᵢ[kp] / gk + 1e-60)
+
+        # ORIGINAL
+        # x1 = log(gᵢ[kp] / gk + 1e-60)
+
+        # MODIFIED - Apply a limiter to avoid negative args to log
+        #   We note that this may not strictly obey the formulation of the flux
+        #   algorithm, but this tends to work okay in practice.
+        log_arg = gᵢ[kp] / gk + 1e-60
+        log_arg = max(1e-60, log_arg)
+        x1 = log(log_arg)
+
         flux = gsk / x1 * (exp(0.5 * x1) - exp(x1 * (0.5 - c[i, j])))
         flux = min(flux, gk)
         gᵢ[k] = gk - flux
