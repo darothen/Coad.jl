@@ -211,6 +211,32 @@ t = 0.0
 lmin = 0.0
 total_runtime = 0.0
 
+function find_bounds(g; gmin=gmin)
+
+  m = length(g)
+
+  # TODO: refactor since this can be wrapped in a single array function
+  # This basically sets a "focus" in the array where we have mass that needs
+  # to get collided / advected around, so we don't waste cycles on empty bins.
+  # In practice seems to be a limiter on numerical issues.
+  i0 = 1
+  for i ∈ 1:m-1
+    i0 = i
+    if g[i] > gmin
+      break
+    end
+  end
+  i1 = m-1
+  for i ∈ m-1:-1:1
+    i1 = i
+    if g[i] > gmin
+      break
+    end
+  end
+
+  return i0, i1
+end
+
 println("""
 BEGIN TIME INTEGRATION
 """)
@@ -223,24 +249,7 @@ for i ∈ 1:nt
   # subroutine coad
 
   # Lower and Upper integration limit i0, i1
-  # TODO: refactor since this can be wrapped in a single array function
-  # This basically sets a "focus" in the array where we have mass that needs
-  # to get collided / advected around, so we don't waste cycles on empty bins.
-  # In practice seems to be a limiter on numerical issues.
-  i0 = 1
-  for i ∈ 1:m-1
-    i0 = i
-    if gᵢ[i] > gmin
-      break
-    end
-  end
-  i1 = m-1
-  for i ∈ m-1:-1:1
-    i1 = i
-    if gᵢ[i] > gmin
-      break
-    end
-  end
+  i0, i1 = find_bounds(gᵢ, gmin=gmin)
 
   if debug
     @printf "DEBUG bnds_check %6d %8d %8d\n" t i0 i1
