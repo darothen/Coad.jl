@@ -103,41 +103,6 @@ in the original code, as well as pre-estimate where collisions will land in the
 actual coad subroutine
 =#
 
-function courant(x)
-  
-  # Set up return matrices; first inspect length of our mass grid, 'x'
-  m = length(x)
-  c = zeros(Float64, m, m) # Courant numbers for limiting advection flux
-  ima = zeros(Int16, m, m) # This is basically keeping track of the left bound of the 
-
-  # Compute Courant limits
-  for i ∈ 1:m
-    for j ∈ i:m
-
-      x0 = x[i] + x[j]  # Summed / total mass from collision
-      for k ∈ j:m
-        if (x[k] ≥ x0) && (x[k-1] < x0) # There is probably an easier way to exploit the size of the collision here than linear searching for bounding masses
-          if (c[i, j] < (1 - 1e-8))
-            kk = k - 1
-            c[i, j] = log(x0 / x[k-1])
-          else
-            c[i, j] = 0.0
-            kk = k
-          end
-          ima[i, j] = min(m - 1, kk)
-          break
-        end
-      end # k loop
-
-      # Copy over diagonal for symmetry
-      c[j, i] = c[i, j]
-      ima[j, i] = ima[i, j]
-
-    end # j loop
-  end # i loop
-
-  return c, ima
-end
 println("""
 COMPUTE COURANT LIMITS ON GRID""")
 CPUtic()
@@ -149,50 +114,6 @@ elapsed = CPUtoq()
 
 # Collision Kernel
 
-function kernels(x, kernel)
-
-  m = length(x)
-  ck = zeros(Float64, m, m)
-  cck = zeros(Float64, m, m)
-
-  # Compute collision kernel for all potential bin interactions
-  for j ∈ 1:m
-    for i ∈ 1:j
-
-      if kernel == :golovin
-        cck[j, i] = golovin_kernel(x[i], x[j])
-      elseif kernel == :hydro
-        cck[j, i] = hydrodynamic_kernel(x[i], x[j])
-      elseif kernel == :long
-        cck[j, i] = long_kernel(x[i], x[j])
-      else # default to Golovin
-        cck[j, i] = golovin_kernel(x[i], x[j])
-      end # kernel 
-
-      # Copy over diagonal
-      cck[i, j] = cck[j, i]
-    end # i
-  end # j
-
-  # cache 2d interpolation on kernel vals
-  for i ∈ 1:m
-    for j ∈ 1:m
-      jm = max(j - 1, 1)
-      im = max(i - 1, 1)
-      jp = min(j + 1, m)
-      ip = min(i + 1, m)
-      ck[i, j] = 0.125 * (
-        cck[i, jm] + cck[im, j] + cck[ip, j] + cck[i, jp]
-      )  + 0.5 * cck[i, j]
-      if i == j
-        ck[i, j] = 0.5 * ck[i, j]
-      end
-    end
-  end
-
-  return ck
-
-end
 println("""
 COMPUTE COLLISION KERNELS ON GRID""")
 CPUtic()
@@ -228,32 +149,6 @@ tlmin = 1e-6
 t = 0.0
 lmin = 0.0
 total_runtime = 0.0
-
-@inline function find_bounds(g; gmin=gmin)
-
-  m = length(g)
-
-  # TODO: refactor since this can be wrapped in a single array function
-  # This basically sets a "focus" in the array where we have mass that needs
-  # to get collided / advected around, so we don't waste cycles on empty bins.
-  # In practice seems to be a limiter on numerical issues.
-  i0 = 1
-  for i ∈ 1:m-1
-    i0 = i
-    if g[i] > gmin
-      break
-    end
-  end
-  i1 = m-1
-  for i ∈ m-1:-1:1
-    i1 = i
-    if g[i] > gmin
-      break
-    end
-  end
-
-  return i0, i1
-end
 
 @inline function coad!(g, x, c, ck, ima; debug=false, gmin=gmin)
 
