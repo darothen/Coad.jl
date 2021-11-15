@@ -1,18 +1,14 @@
 include("util.jl")
 
-using LaTeXStrings
+using CPUTime
 using Plots
 using Printf
 
-debug = false
-
-const n = 251
+const n = 221
 # const emin = (1e-9) * 1e-6 # input mg convert to kg
 const r₁ = (0.1)*1e-6  # minimum droplet size bin, micron->m
 # NOTE: We use subscript "1" because Julia is a 1-indexed language. By convention
 # .     we reserve the nought subscript for general parameters.
-const tmax = 3601 # seconds
-const Δt_plot = 30 # minutes
 const gmin = 1e-60 # lower bound on permissible bin mass density
 
 ## Arrays
@@ -22,24 +18,41 @@ c = zeros(Float64, n, n) # Courant numbers for limiting advection flux
 ima = zeros(Int16, n, n) # This is basically keeping track of the left bound of the 
 # bin that a particular collision on the mass grid will land in
 
-# grid
-g = zeros(Float64, n)
-r = zeros(Float64, n)
-e = zeros(Float64, n)
-
 #kern 
 ck = zeros(Float64, n, n)
 ec = zeros(Float64, n, n)
 cck = zeros(Float64, n, n)
 
-## Parameters
+## Parameters / Configuration
+# Size Distribtion
 r̅ = (10.0) * 1e-6 # mode radius of initial distribution, input micron convert to m
 x̅ = mass_from_r(r̅) # mean initial droplet mass (kg)
 L = (1.0)*1e-3 # total water content, g/m3 convert to kg/m3
 
-α = 2^(1/4) # Mass bin scaling ratio, 2^(1/n) where 'n' is the number of bins 
+# Grid Spacing
+α = 2^(1/3) # Mass bin scaling ratio, 2^(1/n) where 'n' is the number of bins 
             # between mass doubling
 Δy = Δlnr = log(α) / 3  # constant grid distance of logarithmic grid
+# TODO: Re-factor grid discretization here so that users can set a radius range
+#       and we can infer the number of grid steps based on that
+
+# Collision kernel
+# Options:
+#   1) :golovin - Golovin (1963)
+#   2) :hydro - basic hydrodynamic kernel with unit coal/coll efficiency
+#   3) :long - Long collision efficiency
+kernel = :long 
+
+# Time Integration
+tmax = 3601 # seconds
+Δt = 5.0 # s
+Δt_plot = 30 # minutes
+nt = ceil(Integer, tmax / Δt)
+
+# Other configs
+debug = false
+
+## Model Setup
 
 # Mass and Radius Grid
 #=
@@ -61,12 +74,6 @@ xᵢ = mass_from_r.(rᵢ) # kg
 # Initial droplet distribution; g(y, t) = 3x² * n(x, t), eq. 2 from B98 
 gᵢ = (3 .* xᵢ.^2) .* nc.(xᵢ, L=L, x̅=x̅) # kg / m3
 
-# for i ∈ 1:n
-#   e[i] = xᵢ[i]
-#   r[i] = rᵢ[i]
-#   g[i] = g2[i]
-# end
-
 # Sanity check
 if debug
   for i ∈ 1:n
@@ -85,6 +92,9 @@ actual coad subroutine
 
 =#
 # subroutine courant -- inplace
+println("""
+COMPUTE COURANT LIMITS ON GRID""")
+CPUtic()
 for i ∈ 1:n
   for j ∈ i:n
 
@@ -98,9 +108,7 @@ for i ∈ 1:n
           c[i, j] = 0.0
           kk = k
         end
-        # @printf "ima | %3d %3d | %3d %3d \n" i j n-1 kk
         ima[i, j] = min(n - 1, kk)
-        # ima[i, j] = kk
         break
       end
     end # k loop
@@ -111,28 +119,46 @@ for i ∈ 1:n
 
   end # j loop
 end # i loop
+elapsed = CPUtoq()
+@printf "%3.1f seconds elapsed\n" elapsed
 
-for i ∈ 2:n
-  isq = Integer(i*i)
-  isq_2 = Integer(floor(isq/2))
-  if (isq > n) 
-    break
+if debug
+  for i ∈ 2:n
+    isq = Integer(i*i)
+    isq_2 = Integer(floor(isq/2))
+    if (isq > n) 
+      break
+    end
+    @printf "%8d %8d %10g %8d\n" isq isq_2 c[isq, isq_2] ima[isq, isq_2]
   end
-  @printf "%8d %8d %10g %8d\n" isq isq_2 c[isq, isq_2] ima[isq, isq_2]
-end
-for j ∈ 15:n
-  @printf "%8d %8d %10g %8d\n" 20 j c[20, j] ima[20, j]
+  for j ∈ 15:n
+    @printf "%8d %8d %10g %8d\n" 20 j c[20, j] ima[20, j]
+  end
 end
 
 # Collision Kernel - we just use Golovin for now
 # subroutine trkern
 # cache kernel
+println("""
+COMPUTE COLLISION KERNELS ON GRID""")
+CPUtic()
 for j ∈ 1:n
   for i ∈ 1:j
-    cck[j, i] = golovin_kernel(xᵢ[i], xᵢ[j])
+
+    if kernel == :golovin
+      cck[j, i] = golovin_kernel(xᵢ[i], xᵢ[j])
+    elseif kernel == :hydro
+      cck[j, i] = hydrodynamic_kernel(xᵢ[i], xᵢ[j])
+    elseif kernel == :long
+      cck[j, i] = long_kernel(xᵢ[i], xᵢ[j])
+    else # default to Golovin
+      cck[j, i] = golovin_kernel(xᵢ[i], xᵢ[j])
+    end # kernel 
+
+    # Copy over diagonal
     cck[i, j] = cck[j, i]
-  end
-end
+  end # i
+end # j
 
 # cache 2d interpolation on kernel vals
 for i ∈ 1:n
@@ -150,16 +176,25 @@ for i ∈ 1:n
   end
 end
 
-for i ∈ 2:n
-  isq = Integer(i*i)
-  isq_2 = Integer(floor(isq/2))
-  if (isq > n) 
-    break
+# Update kernel with contsant timestep and log grid distance
+ck = ck.*(Δt*Δy)
+
+elapsed = CPUtoq()
+@printf "%3.1f seconds elapsed\n" elapsed
+
+if debug
+  for i ∈ 2:n
+    isq = Integer(i*i)
+    isq_2 = Integer(floor(isq/2))
+    if (isq > n) 
+      break
+    end
+    @printf "%8d %8d %10g %10g\n" isq isq_2 cck[isq, isq_2] ck[isq, isq_2]
   end
-  @printf "%8d %8d %10g %10g\n" isq isq_2 cck[isq, isq_2] ck[isq, isq_2]
 end
 
 # Plot initial conditions and then begin the time loop
+println("Plotting initial conditions")
 p = plot(
   rᵢ*1e6, gᵢ*1e3, label="t = 0 min", 
   xaxis=:log, xlim=(0.5, 5000), xlabel="r (μm)",
@@ -171,23 +206,15 @@ display(p)
 
 ## TIME LOOP
 
-Δt = 10.0 # s
-nt = ceil(Integer, tmax / Δt)
-
-# Update kernel with contsant timestep and log grid distance
-for i ∈ 1:n
-  for j ∈ 1:n
-    ck[i, j] = ck[i, j]*Δt*Δy
+if debug
+  for i ∈ 2:n
+    isq = Integer(i*i)
+    isq_2 = Integer(floor(isq/2))
+    if (isq > n) 
+      break
+    end
+    @printf "%8d %8d %10g \n" isq isq_2 ck[isq, isq_2]
   end
-end
-
-for i ∈ 2:n
-  isq = Integer(i*i)
-  isq_2 = Integer(floor(isq/2))
-  if (isq > n) 
-    break
-  end
-  @printf "%8d %8d %10g \n" isq isq_2 ck[isq, isq_2]
 end
 
 
@@ -199,6 +226,12 @@ re-written for simplicity.
 tlmin = 1e-6
 t = 0.0
 lmin = 0.0
+total_runtime = 0.0
+
+println("""
+BEGIN TIME INTEGRATION
+""")
+CPUtic()
 for i ∈ 1:nt
   global t = t + Δt
   global tlmin = tlmin + Δt
@@ -314,7 +347,11 @@ for i ∈ 1:nt
   @printf " mass %3.2f  max %3.2f  imax %3d" x0 x1 imax
   @printf "\n"
 
+  local elapsed = CPUtoq()
+  global total_runtime += elapsed
+  CPUtic()
 end
+@printf "Total time - %5.2f seconds" total_runtime
 
 println("End")
 xxx = readline()
