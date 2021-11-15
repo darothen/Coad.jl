@@ -45,8 +45,8 @@ do_plots = true
 
 ## Arrays
 # cour
-c = zeros(Float64, m, m) # Courant numbers for limiting advection flux
-ima = zeros(Int16, m, m) # This is basically keeping track of the left bound of the 
+# c = zeros(Float64, m, m) # Courant numbers for limiting advection flux
+# ima = zeros(Int16, m, m) # This is basically keeping track of the left bound of the 
 # bin that a particular collision on the mass grid will land in
 
 # kern 
@@ -89,33 +89,51 @@ actual coad subroutine
 
 =#
 # subroutine courant -- inplace
+
+function courant(x)
+  
+  # Set up return matrices; first inspect length of our mass grid, 'x'
+  m = length(x)
+  c = zeros(Float64, m, m) # Courant numbers for limiting advection flux
+  ima = zeros(Int16, m, m) # This is basically keeping track of the left bound of the 
+
+  # Grid spacing in ln radius -> directly compute from the mass grid that was
+  # passed in, since Δy = log(α) / 3
+  α = x[2] / x[1]
+  threeΔy = log(α)  # multiply term by 3 since we factor it out in the Courant calc
+
+  # Compute Courant limits
+  for i ∈ 1:m
+    for j ∈ i:m
+
+      x0 = x[i] + x[j]  # Summed / total mass from collision
+      for k ∈ j:m
+        if (x[k] ≥ x0) && (x[k-1] < x0) # There is probably an easier way to exploit the size of the collision here than linear searching for bounding masses
+          if (c[i, j] < (1 - 1e-8))
+            kk = k - 1
+            c[i, j] = log(x0 / x[k-1]) / threeΔy
+          else
+            c[i, j] = 0.0
+            kk = k
+          end
+          ima[i, j] = min(m - 1, kk)
+          break
+        end
+      end # k loop
+
+      # Copy over diagonal for symmetry
+      c[j, i] = c[i, j]
+      ima[j, i] = ima[i, j]
+
+    end # j loop
+  end # i loop
+
+  return c, ima
+end
 println("""
 COMPUTE COURANT LIMITS ON GRID""")
 CPUtic()
-for i ∈ 1:m
-  for j ∈ i:m
-
-    local x0 = xᵢ[i] + xᵢ[j]  # Summed / total mass from collision
-    for k ∈ j:m
-      if (xᵢ[k] ≥ x0) && (xᵢ[k-1] < x0) # There is probably an easier way to exploit the size of the collision here than linear searching for bounding masses
-        if (c[i, j] < (1 - 1e-8))
-          kk = k - 1
-          c[i, j] = log(x0 / xᵢ[k-1]) / (3 * Δy)
-        else
-          c[i, j] = 0.0
-          kk = k
-        end
-        ima[i, j] = min(m - 1, kk)
-        break
-      end
-    end # k loop
-
-    # Copy over diagonal for symmetry
-    c[j, i] = c[i, j]
-    ima[j, i] = ima[i, j]
-
-  end # j loop
-end # i loop
+c, ima = courant(xᵢ)
 elapsed = CPUtoq()
 @printf "%3.1f seconds elapsed\n" elapsed
 
