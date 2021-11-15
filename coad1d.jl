@@ -17,12 +17,12 @@ x̅ = mass_from_r(r̅) # mean initial droplet mass (kg)
 L = (1.0)*1e-3 # total water content, g/m3 convert to kg/m3
 
 # Grid Spacing
-α = 2^(1/4) # Mass bin scaling ratio, 2^(1/n) where 'n' is the number of bins 
+n = 4
+α = 2^(1/n) # Mass bin scaling ratio, 2^(1/n) where 'n' is the number of bins 
             # between mass doubling
 
 m = ceil(Integer, 1 + 3*log(rm / r₁)/log(α)) # number of mass bins to populate
 Δy = Δlnr = log(α) / 3  # constant grid distance of logarithmic grid
-
 
 # Collision kernel
 # Options:
@@ -40,6 +40,31 @@ nt = ceil(Integer, tmax / Δt)
 # Other configs
 debug = false
 do_plots = true
+
+# Report configuration to terminal
+println("""
+1D Stochastic Collection Equation Solver
+========================================
+
+Initial Conditions
+------------------
+L = $(L*1e3) g/m³ - Total LWC
+r̅ = $(r̅*1e6) μm - Mode radius
+x̅ = $x̅ kg - Mean droplet mass
+
+Grid Setup
+----------
+$m bins spanning radii ($(r₁*1e6) μm - $(rm*1e6) μm)
+α factor = $α (mass doubling every $n bins)
+
+Time Integration
+----------------
+Integrating to $tmax seconds by Δt=$Δt
+
+- DEBUG is $debug
+- DO_PLOTS is $do_plots
+
+""")
 
 ## Model Setup
 
@@ -204,7 +229,7 @@ t = 0.0
 lmin = 0.0
 total_runtime = 0.0
 
-function find_bounds(g; gmin=gmin)
+@inline function find_bounds(g; gmin=gmin)
 
   m = length(g)
 
@@ -230,7 +255,7 @@ function find_bounds(g; gmin=gmin)
   return i0, i1
 end
 
-function coad!(g, x, c, ck, ima; debug=false, gmin=gmin)
+@inline function coad!(g, x, c, ck, ima; debug=false, gmin=gmin)
 
   # Lower and Upper integration limit i0, i1
   i0, i1 = find_bounds(g, gmin=gmin)
