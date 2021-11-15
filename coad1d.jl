@@ -51,6 +51,7 @@ nt = ceil(Integer, tmax / Δt)
 
 # Other configs
 debug = false
+do_plots = false
 
 ## Model Setup
 
@@ -73,13 +74,6 @@ xᵢ = mass_from_r.(rᵢ) # kg
 
 # Initial droplet distribution; g(y, t) = 3x² * n(x, t), eq. 2 from B98 
 gᵢ = (3 .* xᵢ.^2) .* nc.(xᵢ, L=L, x̅=x̅) # kg / m3
-
-# Sanity check
-if debug
-  for i ∈ 1:n
-    @printf "%10d %24g %24g %24g\n" i xᵢ[i]*1e6 rᵢ[i] gᵢ[i]
-  end
-end
 
 # Courant Numbers
 #=
@@ -122,19 +116,6 @@ end # i loop
 elapsed = CPUtoq()
 @printf "%3.1f seconds elapsed\n" elapsed
 
-if debug
-  for i ∈ 2:n
-    isq = Integer(i*i)
-    isq_2 = Integer(floor(isq/2))
-    if (isq > n) 
-      break
-    end
-    @printf "%8d %8d %10g %8d\n" isq isq_2 c[isq, isq_2] ima[isq, isq_2]
-  end
-  for j ∈ 15:n
-    @printf "%8d %8d %10g %8d\n" 20 j c[20, j] ima[20, j]
-  end
-end
 
 # Collision Kernel - we just use Golovin for now
 # subroutine trkern
@@ -182,41 +163,22 @@ ck = ck.*(Δt*Δy)
 elapsed = CPUtoq()
 @printf "%3.1f seconds elapsed\n" elapsed
 
-if debug
-  for i ∈ 2:n
-    isq = Integer(i*i)
-    isq_2 = Integer(floor(isq/2))
-    if (isq > n) 
-      break
-    end
-    @printf "%8d %8d %10g %10g\n" isq isq_2 cck[isq, isq_2] ck[isq, isq_2]
-  end
-end
+## Plot Initial Check
 
 # Plot initial conditions and then begin the time loop
-println("Plotting initial conditions")
-p = plot(
-  rᵢ*1e6, gᵢ*1e3, label="t = 0 min", 
-  xaxis=:log, xlim=(0.5, 5000), xlabel="r (μm)",
-  xticks=[1, 10, 100, 1000],
-  ylim=(0, 0.9), ylabel="g (g / m³)",
-  yticks=0:0.06:0.9
-)
-display(p)
-
-## TIME LOOP
-
-if debug
-  for i ∈ 2:n
-    isq = Integer(i*i)
-    isq_2 = Integer(floor(isq/2))
-    if (isq > n) 
-      break
-    end
-    @printf "%8d %8d %10g \n" isq isq_2 ck[isq, isq_2]
-  end
+if do_plots
+  println("Plotting initial conditions")
+  p = plot(
+    rᵢ*1e6, gᵢ*1e3, label="t = 0 min", 
+    xaxis=:log, xlim=(0.5, 5000), xlabel="r (μm)",
+    xticks=[1, 10, 100, 1000],
+    ylim=(0, 0.9), ylabel="g (g / m³)",
+    yticks=0:0.06:0.9
+  )
+  display(p)
 end
 
+## TIME LOOP
 
 #=
 All of the time looping logic here is super old-school and can be totally
@@ -259,7 +221,9 @@ for i ∈ 1:nt
     end
   end
 
-  @printf "bnds_check %6d %8d %8d\n" t i0 i1
+  if debug
+    @printf "DEBUG bnds_check %6d %8d %8d\n" t i0 i1
+  end
 
   # Main collision/coalescence loop
   for i ∈ i0:i1
@@ -282,24 +246,13 @@ for i ∈ 1:nt
       gsj = x0 / xᵢ[i]
       gsk = gsi + gsj
       gᵢ[i] = gᵢ[i] - gsi
-      # if g[i] < 0
-      #   @printf "WARNING - g[%d] = %e < 0 | %e \n" i g[i] gsi
-      # end
       gᵢ[j] = gᵢ[j] - gsj
-      # if g[j] < 0
-      #   @printf "WARNING - g[%d] = %e < 0 | %e \n" j g[j] gsj
-      # end
       gk = gᵢ[k] + gsk
-
-      # @printf "a | (%3d, %3d) %13.6e %13.6e %13.6e\n" i j gsi gsj gsk
 
       if gk > gmin
         x1 = log(gᵢ[kp] / gk + 1e-60)
-        # @printf "x | %13.6e %13.6e %13.6e %13.6e\n" g[kp] g[k] gk x1
         flux = gsk / x1 * (exp(0.5 * x1) - exp(x1 * (0.5 - c[i, j])))
-        # @printf "b | %13.6e %13.6e %13.6e %13.6e\n" x1 gk flux gsk
         flux = min(flux, gk)
-        # @printf " %3d %3d %e %e\n" i j gk flux
         gᵢ[k] = gk - flux
         gᵢ[kp] = gᵢ[kp] + flux
       end
@@ -312,7 +265,7 @@ for i ∈ 1:nt
     global tlmin = tlmin - 60
     global lmin = lmin + 1
 
-    if (lmin % Δt_plot) < 1
+    if (lmin % Δt_plot) < 1 & do_plots
       display(plot!(p, rᵢ*1e6, gᵢ*1e3, label = "t = $lmin min"))
     end
 
@@ -328,7 +281,7 @@ for i ∈ 1:nt
       end
     end
     @printf "    %4d mins |" lmin
-    @printf " mass %3.2e  max %3.2e  imax %3d" x0 x1 imax
+    @printf " mass %10.3e  max %10.3e imax %3d" x0 x1 imax
     @printf "\n"
   end
 
@@ -344,14 +297,14 @@ for i ∈ 1:nt
     end
   end
   @printf "    %4d s |" t
-  @printf " mass %3.2f  max %3.2f  imax %3d" x0 x1 imax
+  @printf " mass %10.3e  max %10.3e  imax %3d" x0 x1 imax
   @printf "\n"
 
   local elapsed = CPUtoq()
   global total_runtime += elapsed
   CPUtic()
 end
-@printf "Total time - %5.2f seconds" total_runtime
+@printf "Total time - %5.2f seconds\n" total_runtime
 
 println("End")
 xxx = readline()
