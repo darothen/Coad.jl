@@ -29,7 +29,7 @@ m = ceil(Integer, 1 + 3*log(rm / r₁)/log(α)) # number of mass bins to populat
 #   1) :golovin - Golovin (1963)
 #   2) :hydro - basic hydrodynamic kernel with unit coal/coll efficiency
 #   3) :long - Long collision efficiency
-kernel = :golovin 
+kernel = :long 
 
 # Time Integration
 tmax = 3601 # seconds
@@ -42,16 +42,6 @@ debug = false
 do_plots = true
 
 ## Model Setup
-
-## Arrays
-# cour
-# c = zeros(Float64, m, m) # Courant numbers for limiting advection flux
-# ima = zeros(Int16, m, m) # This is basically keeping track of the left bound of the 
-# bin that a particular collision on the mass grid will land in
-
-# kern 
-ck = zeros(Float64, m, m)
-cck = zeros(Float64, m, m)
 
 # Mass and Radius Grid
 #=
@@ -141,46 +131,57 @@ elapsed = CPUtoq()
 # Collision Kernel - we just use Golovin for now
 # subroutine trkern
 # cache kernel
+
+function kernels(x, kernel)
+
+  m = length(x)
+  ck = zeros(Float64, m, m)
+  cck = zeros(Float64, m, m)
+
+  # Compute collision kernel for all potential bin interactions
+  for j ∈ 1:m
+    for i ∈ 1:j
+
+      if kernel == :golovin
+        cck[j, i] = golovin_kernel(x[i], x[j])
+      elseif kernel == :hydro
+        cck[j, i] = hydrodynamic_kernel(x[i], x[j])
+      elseif kernel == :long
+        cck[j, i] = long_kernel(x[i], x[j])
+      else # default to Golovin
+        cck[j, i] = golovin_kernel(x[i], x[j])
+      end # kernel 
+
+      # Copy over diagonal
+      cck[i, j] = cck[j, i]
+    end # i
+  end # j
+
+  # cache 2d interpolation on kernel vals
+  for i ∈ 1:m
+    for j ∈ 1:m
+      jm = max(j - 1, 1)
+      im = max(i - 1, 1)
+      jp = min(j + 1, m)
+      ip = min(i + 1, m)
+      ck[i, j] = 0.125 * (
+        cck[i, jm] + cck[im, j] + cck[ip, j] + cck[i, jp]
+      )  + 0.5 * cck[i, j]
+      if i == j
+        ck[i, j] = 0.5 * ck[i, j]
+      end
+    end
+  end
+
+  return ck
+
+end
 println("""
 COMPUTE COLLISION KERNELS ON GRID""")
 CPUtic()
-for j ∈ 1:m
-  for i ∈ 1:j
-
-    if kernel == :golovin
-      cck[j, i] = golovin_kernel(xᵢ[i], xᵢ[j])
-    elseif kernel == :hydro
-      cck[j, i] = hydrodynamic_kernel(xᵢ[i], xᵢ[j])
-    elseif kernel == :long
-      cck[j, i] = long_kernel(xᵢ[i], xᵢ[j])
-    else # default to Golovin
-      cck[j, i] = golovin_kernel(xᵢ[i], xᵢ[j])
-    end # kernel 
-
-    # Copy over diagonal
-    cck[i, j] = cck[j, i]
-  end # i
-end # j
-
-# cache 2d interpolation on kernel vals
-for i ∈ 1:m
-  for j ∈ 1:m
-    jm = max(j - 1, 1)
-    im = max(i - 1, 1)
-    jp = min(j + 1, m)
-    ip = min(i + 1, m)
-    ck[i, j] = 0.125 * (
-      cck[i, jm] + cck[im, j] + cck[ip, j] + cck[i, jp]
-    )  + 0.5 * cck[i, j]
-    if i == j
-      ck[i, j] = 0.5 * ck[i, j]
-    end
-  end
-end
-
+ck = kernels(xᵢ, kernel)
 # Update kernel with contsant timestep and log grid distance
 ck = ck.*(Δt*Δy)
-
 elapsed = CPUtoq()
 @printf "%3.1f seconds elapsed\n" elapsed
 
