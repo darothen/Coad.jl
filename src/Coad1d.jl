@@ -23,6 +23,8 @@ struct Coad1D <: AbstractCoadModel
 
     # Grid definition
     xᵢ, rᵢ, Δlnr
+
+    
     # Do we need to include anything else here?    
     function Coad1D(n, k)
         α = 2^(1/n)

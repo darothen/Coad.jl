@@ -105,8 +105,6 @@ println("""
 COMPUTE COURANT LIMITS ON GRID""")
 CPUtic()
 c, ima = courant(xᵢ)
-# Correct Courant numbers for grid spacing
-c = c / (3*Δy)
 elapsed = CPUtoq()
 @printf "%3.1f seconds elapsed\n" elapsed
 
@@ -116,8 +114,6 @@ println("""
 COMPUTE COLLISION KERNELS ON GRID""")
 CPUtic()
 ck = kernels(xᵢ, kernel)
-# Update kernel with contsant timestep and log grid distance
-ck = ck.*(Δt*Δy)
 elapsed = CPUtoq()
 @printf "%3.1f seconds elapsed\n" elapsed
 
@@ -148,7 +144,7 @@ t = 0.0
 lmin = 0.0
 total_runtime = 0.0
 
-@inline function coad!(g, x, c, ck, ima; debug=false, gmin=gmin)
+@inline function coad!(g, x, c, ck, ima, Δt, Δy; debug=false, gmin=gmin)
 
   # Lower and Upper integration limit i0, i1
   i0, i1 = find_bounds(g, gmin=gmin)
@@ -168,7 +164,9 @@ total_runtime = 0.0
         continue
       end
     
-      x0 = ck[i, j] * g[i] * g[j]
+      # We did not pre-scale the collison kernels LUT by Δt and Δy in this 
+      # version so we have to account for them here.
+      x0 = ck[i, j] * g[i] * g[j] * Δt * Δy
       x0 = min(x0, g[i] * x[j])
       if j != k # Not sure what's going on here.
         x0 = min(x0, g[j] * x[i])
@@ -193,7 +191,9 @@ total_runtime = 0.0
         log_arg = max(1e-60, log_arg)
         x1 = log(log_arg)
 
-        flux = gsk / x1 * (exp(0.5 * x1) - exp(x1 * (0.5 - c[i, j])))
+        # We did not pre-scale the cached Courant limits for this version so we
+        # have to apply them when estimating the flux directly.
+        flux = gsk / x1 * (exp(0.5 * x1) - exp(x1 * (0.5 - (c[i, j]/3/Δy))))
         flux = min(flux, gk)
         g[k] = gk - flux
         g[kp] = g[kp] + flux
@@ -214,7 +214,7 @@ for i ∈ 1:nt
 
   # Collision
   # subroutine coad
-  coad!(gᵢ, xᵢ, c, ck, ima, debug=debug, gmin=gmin)
+  coad!(gᵢ, xᵢ, c, ck, ima, Δt, Δy, debug=debug, gmin=gmin)
 
   # Plotting
   if tlmin ≥ 60
@@ -262,6 +262,6 @@ for i ∈ 1:nt
 end
 @printf "Total time - %5.2f seconds\n" total_runtime
 
-println("End")
-# xxx = readline()
+println("End; press any key to close.")
+xxx = readline()
 
