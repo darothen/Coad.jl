@@ -11,27 +11,29 @@ const gmin = 1e-60 # lower bound on permissible bin mass density
 A non-linear system of equations type.
 
 """
-struct Coad1D <: AbstractCoadModel
+struct Coad1D{
+  I <: Int64, 
+  T <: AbstractFloat} <: AbstractCoadModel
     # Grid spacing
-    α
+    α::T
     # Collison kernel
-    kernel
+    kernel::Symbol
 
     # Grid definition
-    xᵢ
-    rᵢ
-    Δlnr
+    xᵢ::AbstractArray{T}
+    rᵢ::AbstractArray{T}
+    Δlnr::T
 
     # Initial conditions - don't set by default
-    gᵢ::AbstractArray{Real}
+    gᵢ::AbstractArray{T}
 
     # Cached computatonal values
-    c
-    ima # courant limits and collison idx LUT
-    ck # smoothed collision kernel LUT
+    c::AbstractArray{T}
+    ima::AbstractArray{I} # courant limits and collison idx LUT
+    ck::AbstractArray{T} # smoothed collision kernel LUT
 
     # Do we need to include anything else here?    
-    function Coad1D(;n, kernel)
+    function Coad1D(;n::I, kernel::Symbol) where {I <: Integer}
         α = 2^(1/n)
 
         m = ceil(Integer, 1 + 3*log(rm / r₁)/log(α)) # number of mass bins to populate
@@ -47,7 +49,9 @@ struct Coad1D <: AbstractCoadModel
         println("  Pre-caching $kernel kernel lookup table...")
         ck = kernels(xᵢ, kernel)
 
-        return new(α, kernel, xᵢ, rᵢ, Δlnr, gᵢ, c, ima, ck)
+        T = eltype(gᵢ)
+
+        return new{I, T}(α, kernel, xᵢ, rᵢ, Δlnr, gᵢ, c, ima, ck)
     end
 end
 
@@ -61,7 +65,7 @@ function set!(model::Coad1D, dist::AbstractSizeDist{FT}) where {FT <: Real}
   model.gᵢ .= (3 .* model.xᵢ.^2) .* nc.(Ref(dist), model.xᵢ) # kg / m3
 end
 
-@inline function step!(model::Coad1D, Δt)
+function step!(model::Coad1D, Δt)
 
   # Lower and Upper integration limit i0, i1
   i0, i1 = find_bounds(model.gᵢ, gmin=gmin)
@@ -71,8 +75,8 @@ end
   # end
 
   # Main collision/coalescence loop
-  for i ∈ i0:i1
-    for j ∈ i:i1
+  @inbounds for i ∈ i0:i1
+    @inbounds for j ∈ i:i1
       k = model.ima[i, j]  # Get pre-computed index of coalescence bin edge
       kp = k + 1
 
@@ -138,14 +142,14 @@ grid by minimizing the number of bins which need to be inspected.
   # to get collided / advected around, so we don't waste cycles on empty bins.
   # In practice seems to be a limiter on numerical issues.
   i0 = 1
-  for i ∈ 1:m-1
+  @inbounds for i ∈ 1:m-1
     i0 = i
     if g[i] > gmin
       break
     end
   end
   i1 = m-1
-  for i ∈ m-1:-1:1
+  @inbounds for i ∈ m-1:-1:1
     i1 = i
     if g[i] > gmin
       break
