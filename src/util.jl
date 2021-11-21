@@ -159,29 +159,3 @@ function courant(x)
   return c, ima
 end
 
-@inline function find_bounds(g; gmin=1e-60)
-
-  m = length(g)
-
-  # TODO: refactor since this can be wrapped in a single array function
-  # This basically sets a "focus" in the array where we have mass that needs
-  # to get collided / advected around, so we don't waste cycles on empty bins.
-  # In practice seems to be a limiter on numerical issues.
-  i0 = 1
-  for i ∈ 1:m-1
-    i0 = i
-    if g[i] > gmin
-      break
-    end
-  end
-  i1 = m-1
-  for i ∈ m-1:-1:1
-    i1 = i
-    if g[i] > gmin
-      break
-    end
-  end
-
-  return i0, i1
-end
-

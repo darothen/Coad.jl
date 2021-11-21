@@ -6,7 +6,7 @@ struct ExponentialDist{FT} <: AbstractSizeDist{FT}
     x̅::FT # Mean initial droplet mass, kg
 
     # TODO: Add special constructor to enforce positive args
-    function ExponentialDist(L̅::FT, x̅::FT) where {FT <: Real}
+    function ExponentialDist(;L̅::FT, x̅::FT) where {FT <: Real}
         new{FT}(L̅, x̅)
     end
 end

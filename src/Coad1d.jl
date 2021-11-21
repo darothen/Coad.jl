@@ -36,12 +36,15 @@ struct Coad1D <: AbstractCoadModel
 
         m = ceil(Integer, 1 + 3*log(rm / r₁)/log(α)) # number of mass bins to populate
         Δlnr = log(α) / 3  # constant grid distance of logarithmic grid
-        
+
+        println("Instatiating model with $m mass bins...")
         rᵢ = r₁*(α.^((collect(1:m) .- 1)./3)) # meter
         xᵢ = mass_from_r.(rᵢ) # kg
         gᵢ = similar(xᵢ) .* 0
 
+        println("  Pre-caching grid Courant limits...")
         c, ima = courant(xᵢ)
+        println("  Pre-caching $kernel kernel lookup table...")
         ck = kernels(xᵢ, kernel)
 
         return new(α, kernel, xᵢ, rᵢ, Δlnr, gᵢ, c, ima, ck)
@@ -116,4 +119,38 @@ end
     end # j
   end # i
 
+end
+
+"""
+    find_bounds(g; gmin)
+
+Given a binned discretization of a droplet mass distribution, find the range of
+bin indices which have non-negligble mass. This function is intended to help
+accelerate other computations which require analyzing a process on the full mass
+grid by minimizing the number of bins which need to be inspected.
+"""
+@inline function find_bounds(g; gmin=1e-60)
+
+  m = length(g)
+
+  # TODO: refactor since this can be wrapped in a single array function
+  # This basically sets a "focus" in the array where we have mass that needs
+  # to get collided / advected around, so we don't waste cycles on empty bins.
+  # In practice seems to be a limiter on numerical issues.
+  i0 = 1
+  for i ∈ 1:m-1
+    i0 = i
+    if g[i] > gmin
+      break
+    end
+  end
+  i1 = m-1
+  for i ∈ m-1:-1:1
+    i1 = i
+    if g[i] > gmin
+      break
+    end
+  end
+
+  return i0, i1
 end

@@ -11,15 +11,16 @@ using Printf
 
 # Set up grid / model simulation
 model = Coad1D(
-    n = 4 ,
+    n = 6,
     kernel = :long,
 )
 
 # Set up initial conditions
 r̅=(10.0)*1e-6
-dist = ExponentialDist((1.0)*1e-3, mass_from_r(r̅),)
+dist = ExponentialDist(L̅=(1.0)*1e-3, x̅=mass_from_r(r̅))
 set!(model, dist)
 
+println("\n Plotting initial conditions...")
 p = plot(
     model.rᵢ*1e6, model.gᵢ*1e3, label="t = 0 min", 
     xaxis=:log, xlabel="r (μm)",
@@ -29,12 +30,29 @@ p = plot(
 )
 display(p)
 
-tmax = 60*30 + 1 # seconds
+tmax = 60*60 + 1 # seconds
 Δt = 5.0 # s
-Δt_plot = 10 # minutes
+Δt_diag = 1 * 60
+Δt_plot = 10 * 60
 nt = ceil(Integer, tmax / Δt)
+
+is_diag_step(t; Δt_diag=Δt_diag) = t % Δt_diag == 0
+is_plot_step(t; Δt_plot=Δt_plot) = t % Δt_plot == 0
+
+println("\n Beginning simulation...")
+println(" -----------------------")
 for i in 1:nt
+    t = i * Δt
     step!(model, Δt)
+
+    if is_diag_step(t)
+        mass_tot = sum(model.gᵢ)
+        @printf "    %4d mins | mass %10.3e\n" t/60 mass_tot
+    end
+
+    if is_plot_step(t)
+        display(plot!(p, model.rᵢ*1e6, model.gᵢ*1e3, label = "t = $(t/60) min"))
+    end
 end
 
 lmin = floor(Integer, nt*Δt/60)
