@@ -13,22 +13,25 @@ A non-linear system of equations type.
 """
 struct Coad1D <: AbstractCoadModel
     # Grid spacing
-    α,
+    α
     # Collison kernel
-    kernel,
+    kernel
 
     # Grid definition
-    xᵢ, rᵢ, Δlnr,
+    xᵢ
+    rᵢ
+    Δlnr
 
     # Initial conditions - don't set by default
-    gᵢ, 
+    gᵢ::AbstractArray{Real}
 
     # Cached computatonal values
-    c, ima, # courant limits and collison idx LUT
-    ck, # smoothed collision kernel LUT
+    c
+    ima # courant limits and collison idx LUT
+    ck # smoothed collision kernel LUT
 
     # Do we need to include anything else here?    
-    function Coad1D(n, k)
+    function Coad1D(;n, kernel)
         α = 2^(1/n)
 
         m = ceil(Integer, 1 + 3*log(rm / r₁)/log(α)) # number of mass bins to populate
@@ -39,15 +42,20 @@ struct Coad1D <: AbstractCoadModel
         gᵢ = similar(xᵢ) .* 0
 
         c, ima = courant(xᵢ)
-        ck = kernels(xᵢ, k)
+        ck = kernels(xᵢ, kernel)
 
-        return new(α, k, xᵢ, rᵢ, Δlnr, gᵢ, c, ima, ck)
+        return new(α, kernel, xᵢ, rᵢ, Δlnr, gᵢ, c, ima, ck)
     end
 end
 
-function set!(model::Coad1D, dist::AbstractSizeDist)
+function Base.show(io::IO, model::Coad1D)
+  m = length(model.xᵢ)
+  print(io, "Coad1D Model ($m radii ∈ ($(r₁*1e6), $(rm*1e6)) μm, kernel=$(model.kernel))")
+end 
+
+function set!(model::Coad1D, dist::AbstractSizeDist{FT}) where {FT <: Real}
   # Initial droplet distribution; g(y, t) = 3x² * n(x, t), eq. 2 from B98 
-  model.gᵢ = (3 .* model.xᵢ.^2) .* nc.(dist, model.xᵢ) # kg / m3
+  model.gᵢ .= (3 .* model.xᵢ.^2) .* nc.(Ref(dist), model.xᵢ) # kg / m3
 end
 
 @inline function step!(model::Coad1D, Δt)
@@ -99,7 +107,7 @@ end
 
         # We did not pre-scale the cached Courant limits for this version so we
         # have to apply them when estimating the flux directly.
-        flux = gsk / x1 * (exp(0.5 * x1) - exp(x1 * (0.5 - (model.c[i, j]/3/Δy))))
+        flux = gsk / x1 * (exp(0.5 * x1) - exp(x1 * (0.5 - (model.c[i, j]/3/model.Δlnr))))
         flux = min(flux, gk)
         model.gᵢ[k] = gk - flux
         model.gᵢ[kp] = model.gᵢ[kp] + flux
