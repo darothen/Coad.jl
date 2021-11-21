@@ -11,7 +11,7 @@ using Printf
 
 # Set up grid / model simulation
 model = Coad1D(
-    n = 2,
+    n = 6,
     kernel = :long,
 )
 
@@ -21,14 +21,14 @@ dist = ExponentialDist(L̅=(1.0)*1e-3, x̅=mass_from_r(r̅))
 set!(model, dist)
 
 println("\n Plotting initial conditions...")
-# p = plot(
-#     model.rᵢ*1e6, model.gᵢ*1e3, label="t = 0 min", 
-#     xaxis=:log, xlabel="r (μm)",
-#     # xlim=(0.5, 5000), xticks=[1, 10, 100, 1000],
-#     # ylim=(0, 0.9), yticks=0:0.06:0.9,
-#     ylabel="g (g / m³)",
-# )
-# display(p)
+p = plot(
+    model.rᵢ*1e6, model.gᵢ*1e3, label="t = 0 min", 
+    xaxis=:log, xlabel="r (μm)",
+    # xlim=(0.5, 5000), xticks=[1, 10, 100, 1000],
+    # ylim=(0, 0.9), yticks=0:0.06:0.9,
+    ylabel="g (g / m³)",
+)
+display(p)
 
 tmax = 60*60 + 1 # seconds
 Δt = 5.0 # s
@@ -58,9 +58,9 @@ for i in 1:nt
         @printf "    %4d mins | mass %10.3e\n" t/60 mass_tot
     end
 
-    # if is_plot_step(t)
-    #     display(plot!(p, model.rᵢ*1e6, model.gᵢ*1e3, label = "t = $(t/60) min"))
-    # end
+    if is_plot_step(t)
+        display(plot!(p, model.rᵢ*1e6, model.gᵢ*1e3, label = "t = $(t/60) min"))
+    end
 end
 
 lmin = floor(Integer, nt*Δt/60)

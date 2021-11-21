@@ -10,30 +10,35 @@ const gmin = 1e-60 # lower bound on permissible bin mass density
 
 A non-linear system of equations type.
 
+Typing inspired by: https://github.com/CliMA/RRTMGP.jl/blob/master/src/optics/RTE.jl
 """
 struct Coad1D{
-  I <: Int64, 
-  T <: AbstractFloat} <: AbstractCoadModel
+  FT <: AbstractFloat,
+  I <: Int, 
+  FTA1D <: AbstractArray{FT, 1},
+  FTA2D <: AbstractArray{FT, 2},
+  IA2D <: AbstractArray{I, 2}
+} <: AbstractCoadModel
     # Grid spacing
-    α::T
+    α::FT
     # Collison kernel
     kernel::Symbol
 
     # Grid definition
-    xᵢ::AbstractArray{T}
-    rᵢ::AbstractArray{T}
-    Δlnr::T
+    xᵢ::FTA1D
+    rᵢ::FTA1D
+    Δlnr::FT
 
     # Initial conditions - don't set by default
-    gᵢ::AbstractArray{T}
+    gᵢ::FTA1D
 
     # Cached computatonal values
-    c::AbstractArray{T}
-    ima::AbstractArray{I} # courant limits and collison idx LUT
-    ck::AbstractArray{T} # smoothed collision kernel LUT
+    c::FTA2D
+    ima::IA2D # courant limits and collison idx LUT
+    ck::FTA2D # smoothed collision kernel LUT
 
     # Do we need to include anything else here?    
-    function Coad1D(;n::I, kernel::Symbol) where {I <: Integer}
+    function Coad1D(;n::Int64, kernel::Symbol)
         α = 2^(1/n)
 
         m = ceil(Integer, 1 + 3*log(rm / r₁)/log(α)) # number of mass bins to populate
@@ -49,9 +54,17 @@ struct Coad1D{
         println("  Pre-caching $kernel kernel lookup table...")
         ck = kernels(xᵢ, kernel)
 
-        T = eltype(gᵢ)
+        FT = eltype(xᵢ)
+        I = eltype(ima)
+        FTA1D = typeof(xᵢ)
+        FTA2D = typeof(c)
+        IA2D = typeof(ima)
 
-        return new{I, T}(α, kernel, xᵢ, rᵢ, Δlnr, gᵢ, c, ima, ck)
+        return new{
+          FT, I, FTA1D, FTA2D, IA2D
+        }(
+          α, kernel, xᵢ, rᵢ, Δlnr, gᵢ, c, ima, ck
+        )
     end
 end
 
@@ -60,12 +73,51 @@ function Base.show(io::IO, model::Coad1D)
   print(io, "Coad1D Model ($m radii ∈ ($(r₁*1e6), $(rm*1e6)) μm, kernel=$(model.kernel))")
 end 
 
+# Pre-compute Courant limits
+@inline function courant(x::AbstractArray{FT}) where {FT <: AbstractFloat} 
+  
+  # Set up return matrices; first inspect length of our mass grid, 'x'
+  m = length(x)
+  # FT = eltype(x)
+  c = zeros(FT, m, m) # Courant numbers for limiting advection flux
+  ima = zeros(Int64, m, m) # This is basically keeping track of the left bound of the 
+
+  # Compute Courant limits
+  for i ∈ 1:m
+    for j ∈ i:m
+
+      x0 = x[i] + x[j]  # Summed / total mass from collision
+      for k ∈ j:m
+        if (x[k] ≥ x0) && (x[k-1] < x0) # There is probably an easier way to exploit the size of the collision here than linear searching for bounding masses
+          if (c[i, j] < (1 - 1e-8))
+            kk = k - 1
+            c[i, j] = log(x0 / x[k-1])
+          else
+            c[i, j] = 0.0
+            kk = k
+          end
+          ima[i, j] = min(m - 1, kk)
+          break
+        end
+      end # k loop
+
+      # Copy over diagonal for symmetry
+      c[j, i] = c[i, j]
+      ima[j, i] = ima[i, j]
+
+    end # j loop
+  end # i loop
+
+  return c, ima
+end
+
+
 function set!(model::Coad1D, dist::AbstractSizeDist{FT}) where {FT <: Real}
   # Initial droplet distribution; g(y, t) = 3x² * n(x, t), eq. 2 from B98 
   model.gᵢ .= (3 .* model.xᵢ.^2) .* nc.(Ref(dist), model.xᵢ) # kg / m3
 end
 
-function step!(model::Coad1D, Δt)
+@inline function step!(model::Coad1D, Δt::Float64)
 
   # Lower and Upper integration limit i0, i1
   i0, i1 = find_bounds(model.gᵢ, gmin=gmin)
