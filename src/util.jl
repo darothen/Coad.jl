@@ -1,7 +1,3 @@
-module Util
-
-using Coad
-
 const ρw = 1000.0 # Density of water, kg/m³
 const golovin_b = (1500.0)*1e-3 # Golovin collision coefficient, input cm³/g/s to -> m³/kg/s
 
@@ -11,7 +7,7 @@ r_from_mass(x; ρ=ρw) = (3*x/4/π/ρ)^(1/3)
 # Initial cloud droplet distribution
 nc(x; L=L, x̅=x̅) = (L / x̅^2) * exp(-x / x̅)
 # NOTE: this probably needs to be some sort of struct with an abstract type?
-ponential(x, L, x̅) = nc(x, L, x̅)
+Exponential(x, L, x̅) = nc(x, L, x̅)
 
 ## Collision Kernels
 
@@ -189,4 +185,3 @@ end
   return i0, i1
 end
 
-end # module
