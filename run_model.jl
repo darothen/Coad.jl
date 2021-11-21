@@ -4,8 +4,8 @@ using CPUTime
 using Plots
 using Printf
 
-include("grids.jl")
-include("util.jl")
+include("src/grids.jl")
+include("src/util.jl")
 
 
 ## Parameters / Configuration
