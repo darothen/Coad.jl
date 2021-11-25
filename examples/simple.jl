@@ -30,10 +30,11 @@ p = plot(
 )
 display(p)
 
+
 tmax = 60*60 + 1 # seconds
 Δt = 5.0 # s
 Δt_diag = 1 * 60
-Δt_plot = 10 * 60
+Δt_plot = 5 * 60
 nt = ceil(Integer, tmax / Δt)
 
 is_diag_step(t; Δt_diag=Δt_diag) = t % Δt_diag == 0
@@ -49,6 +50,8 @@ is_plot_step(t; Δt_plot=Δt_plot) = t % Δt_plot == 0
 
 println("\n Beginning simulation...")
 println(" -----------------------")
+
+g_plots = []
 for i in 1:nt
     t = i * Δt
     step!(model, Δt)
@@ -59,16 +62,23 @@ for i in 1:nt
     end
 
     if is_plot_step(t)
-        display(plot!(p, model.rᵢ*1e6, model.gᵢ*1e3, label = "t = $(t/60) min"))
+        lmin = Integer(t/60)
+        push!(g_plots, model.gᵢ[:])
+        display(plot!(p, model.rᵢ*1e6, model.gᵢ*1e3, label = "t = $lmin min"))
     end
 end
 
-lmin = floor(Integer, nt*Δt/60)
-display(plot!(p, model.rᵢ*1e6, model.gᵢ*1e3, 
-              label = "t = $lmin min"))
 println("End; press any key to close.")
-xxx = readline()
+# xxx = readline()
 
+using NPZ
+for (i, g) in enumerate(g_plots)
+    file_fn = @sprintf "output_%03d.npy" i
+    @printf "%03d %s %10.3e \n" i file_fn maximum(g)
+    file_pth = joinpath("output", file_fn)
+    npzwrite(file_pth, g)
+end
+npzwrite("output/r_grid.npy", model.rᵢ)
 
 
 # Set up integrator
