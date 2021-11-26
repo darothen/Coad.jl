@@ -2,6 +2,11 @@ export Timestamp
 
 using Printf
 
+"""
+    struct Timestamp
+
+A simple time-keeping struct with space for minutes and (fractional) seconds.
+"""
 mutable struct Timestamp
     minutes::Int64
     seconds::Real
@@ -25,7 +30,7 @@ end
 function Base.:+(x::Timestamp, y::Timestamp)
     total_minutes = x.minutes + y.minutes
     total_seconds = x.seconds + y.seconds
-    if total_seconds > 60
+    if total_seconds ≥ 60
         total_minutes += 1
         total_seconds -= 60
     end
