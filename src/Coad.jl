@@ -1,9 +1,5 @@
 module Coad
 
-#   #Integrator1D,
-
-#   set!#, run!
-
 using CPUTime
 using Printf
 
@@ -14,6 +10,11 @@ A super type for simulating collision/coalescence problems.
 """
 abstract type AbstractCoadModel end
 
+"""
+    AbstractSizeDist{FT}
+
+A super type for encapsulating size distribution calculations.
+"""
 abstract type AbstractSizeDist{FT} end
 
 include("util.jl")
@@ -25,6 +26,5 @@ export
   Coad1D, set!, step!, ExponentialDist, nc,
 
   mass_from_r, r_from_mass
-
 
 end # module

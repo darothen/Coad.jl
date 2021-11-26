@@ -37,16 +37,16 @@ or other process models boot-strapped in Julia.
 ## Example Application
 
 We've included a very basic demo program reproducing Figure (3) of [B98][] in
-the script [`examples/simple.jl`](). In this example we initialize a basic
+the script [`examples/simple.jl`](examples/simple.jl). In this example we initialize a basic
 exponential droplet size distribution and configure the model to use the Long
 (1974) collision kernel. This results in a droplet autoconversion simulation
 where a secondary raindrop mode "appears" out of nowhere after about 15 minutes
 in the simulation.
 
 The result of this simulation can be visualized (e.g. in the demo Python Jupyter
-Notebook at [`examples/plot_brm_ridgeline.ipynb`]() to produce a "ridgeline"
-style plot showing the evolution of the multi-modal droplet population over
-timme:
+Notebook at [`examples/plot_brm_ridgeline.ipynb`](examples/plot_brm_ridgeline.ipynb)
+to produce a "ridgeline" style plot showing the evolution of the multi-modal
+droplet population over time:
 
 ![BR74 reproduction](/examples/br74_example.png)
 
