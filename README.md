@@ -50,5 +50,10 @@ timme:
 
 ![BR74 reproduction](/examples/br74_example.pngexamples/br74_example.png)
 
+## Acknowledgments
+
+The core algorithm and basis implementation that inspired this project are
+originally by [Andreas Bott](mailto:a.bott@uni-bonn.de).
+
 [B98]: https://doi.org/10.1175/1520-0469(1998)055<2284:AFMFTN>2.0.CO;2
 [bott_fortran]: https://www2.meteo.uni-bonn.de/forschung/gruppen/tgwww/people/abott/fortran/fortran_english.html
