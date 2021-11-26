@@ -48,7 +48,7 @@ Notebook at [`examples/plot_brm_ridgeline.ipynb`]() to produce a "ridgeline"
 style plot showing the evolution of the multi-modal droplet population over
 timme:
 
-![BR74 reproduction](/examples/br74_example.pngexamples/br74_example.png)
+![BR74 reproduction](/examples/br74_example.png)
 
 ## Acknowledgments
 
