@@ -1,14 +1,21 @@
+export Coad1D, set!, step!
 
-const r₁ = (0.1)*1e-6 # minimum droplet size bin, micron->m
-const rm = (100_000.0)*1e-6 # maximum droplet size bin, micron->m
+const r₁ = (0.1)*1e-6 # minimum droplet size bin, μm->m
 # NOTE: We use subscript "1" because Julia is a 1-indexed language. By convention
 # .     we reserve the nought subscript for general parameters.
+const rm = (100_000.0)*1e-6 # maximum droplet size bin, μm->m
 const gmin = 1e-60 # lower bound on permissible bin mass density
 
 """
-    Coad1D()
+    struct Coad1D{
+      FT <: AbstractFloat,
+      I <: Int, 
+      FTA1D <: AbstractArray{FT, 1},
+      FTA2D <: AbstractArray{FT, 2},
+      IA2D <: AbstractArray{I, 2}
+    } <: AbstractCoadModel
 
-A non-linear system of equations type.
+A collison/coalescence model type.
 
 Typing inspired by: https://github.com/CliMA/RRTMGP.jl/blob/master/src/optics/RTE.jl
 """
@@ -73,8 +80,14 @@ function Base.show(io::IO, model::Coad1D)
   print(io, "Coad1D Model ($m radii ∈ ($(r₁*1e6), $(rm*1e6)) μm, kernel=$(model.kernel))")
 end 
 
-# Pre-compute Courant limits
-@inline function courant(x::AbstractArray{FT}) where {FT <: AbstractFloat} 
+"""
+    courant(x::AbstractArray{FT, 1}) where {FT <: AbstractFloat}
+
+Given a binned mass grid x, pre-compute the Courant limits of the B98 advection
+flux algorithm associated with each combination of potential collisions sampled
+from bins on this grid.
+"""
+@inline function courant(x::AbstractArray{FT, 1}) where {FT <: AbstractFloat} 
   
   # Set up return matrices; first inspect length of our mass grid, 'x'
   m = length(x)
@@ -111,28 +124,39 @@ end
   return c, ima
 end
 
+"""
+    set!(model::Coad1D, dist::AbstractSizeDist{FT}) where {FT <: AbstractFloat}
 
-function set!(model::Coad1D, dist::AbstractSizeDist{FT}) where {FT <: Real}
+Set the state vector (mass concentraton, model.gᵢ) according to some specified
+size distribution (number concentration).
+"""
+function set!(model::Coad1D, dist::AbstractSizeDist{FT}) where {FT <: AbstractFloat}
   # Initial droplet distribution; g(y, t) = 3x² * n(x, t), eq. 2 from B98 
   model.gᵢ .= (3 .* model.xᵢ.^2) .* nc.(Ref(dist), model.xᵢ) # kg / m3
 end
 
-@inline function step!(model::Coad1D, Δt::Float64)
+"""
+    step!(model::Coad1D, Δt::FT) where {FT <: AbstractFloat}
+
+Integrate one step of the SCE forward in time by increment Δt. The model's state
+will be updated to reflect the change in mass distribution gᵢ. = g(xᵢ, t+Δt).
+"""
+@inline function step!(model::Coad1D, Δt::FT) where {FT <: AbstractFloat}
 
   # Lower and Upper integration limit i0, i1
   i0, i1 = find_bounds(model.gᵢ, gmin=gmin)
 
-  # if debug
-  #   @printf "DEBUG bnds_check %6d %8d %8d\n" t i0 i1
-  # end
-
   # Main collision/coalescence loop
   @inbounds for i ∈ i0:i1
     @inbounds for j ∈ i:i1
-      k = model.ima[i, j]  # Get pre-computed index of coalescence bin edge
+      k = model.ima[i, j]  # Get pre-computed index of target coalescence bin 
       kp = k + 1
 
-      # PORT - handle a weird edge condition in the initialization of ima?
+      # NOTE - Here we handle a weird edge condition in the initialization of 
+      # ima, where the computed target bin index could actually be invalid (0)
+      # in the original code. This only seems to happen for the very largest 
+      # bins, which are going to overshoot the grid anyway (leak/diffuse mass)
+      # but we need this sanity check to avoid indexing outside of our array.
       if k < 1
         continue
       end
@@ -157,9 +181,9 @@ end
         # ORIGINAL
         # x1 = log(gᵢ[kp] / gk + 1e-60)
 
-        # MODIFIED - Apply a limiter to avoid negative args to log
-        #   We note that this may not strictly obey the formulation of the flux
-        #   algorithm, but this tends to work okay in practice.
+        # MODIFIED - Apply a limiter to avoid negative args to log.
+        # We note that this may not strictly obey the formulation of the flux
+        # algorithm, but this tends to work okay in practice.
         log_arg = model.gᵢ[kp] / gk + 1e-60
         log_arg = max(1e-60, log_arg)
         x1 = log(log_arg)
@@ -178,14 +202,14 @@ end
 end
 
 """
-    find_bounds(g; gmin)
+    find_bounds(g::AbstractArray{FT, 1}; gmin::FT=1e-60) where {FT <: AbstractFloat}
 
 Given a binned discretization of a droplet mass distribution, find the range of
 bin indices which have non-negligble mass. This function is intended to help
 accelerate other computations which require analyzing a process on the full mass
 grid by minimizing the number of bins which need to be inspected.
 """
-@inline function find_bounds(g; gmin=1e-60)
+@inline function find_bounds(g::AbstractArray{FT, 1}; gmin::FT=1e-60) where {FT <: AbstractFloat}
 
   m = length(g)
 
