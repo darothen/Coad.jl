@@ -1,23 +1,43 @@
 const ρw = 1000.0 # Density of water, kg/m³
 const golovin_b = (1500.0)*1e-3 # Golovin collision coefficient, input cm³/g/s to -> m³/kg/s
 
+"""
+    mass_from_r(r; ρ=ρw)
+
+Compute mass (kg) of a droplet with given radius (m) and density (kg/m³)
+"""
 mass_from_r(r; ρ=ρw) = (4*π/3)*ρ*(r^3)
+
+"""
+    r_from_mass(x; ρ=ρw)
+
+Compute radius (m) of a droplet with given mass (kg) and density (kg/m³)
+"""
 r_from_mass(x; ρ=ρw) = (3*x/4/π/ρ)^(1/3)
 
 # Initial cloud droplet distribution
-# nc(x; L=L, x̅=x̅) = (L / x̅^2) * exp(-x / x̅)
-# NOTE: this probably needs to be some sort of struct with an abstract type?
-# Exponential(x, L, x̅) = nc(x, L, x̅)
 
 ## Collision Kernels
 
-# inputs in kg
+"""
+    golovin_kernel(xᵢ, xⱼ)
+
+Compute the Golovin collision kernel for droplets of two given masses (in kg)
+"""
 golovin_kernel(xᵢ, xⱼ) = golovin_b * (xᵢ + xⱼ)
+
 
 function _interior_hydro_kernel(E_coal, E_coll, r_sum, tv_diff)
     E_coal * E_coll * π * r_sum*r_sum * abs(tv_diff)
 end
 
+
+"""
+    hydrodynamic_kernel(xᵢ, xⱼ)
+
+Compute the hydrodynamic collision kernel for droplets of the two given masses
+(in kg) assuming unity collision and coalescence efficiency.
+"""
 function hydrodynamic_kernel(xᵢ, xⱼ)
     tvᵢ = terminal_v(xᵢ)
     tvⱼ = terminal_v(xⱼ)
@@ -26,6 +46,12 @@ function hydrodynamic_kernel(xᵢ, xⱼ)
     _interior_hydro_kernel(1.0, 1.0, r_sum, tv_diff)
 end
 
+"""
+    long_kernel(xᵢ, xⱼ)
+
+Compute the hydrodynamic collision kernel with parameterization of collision
+efficiency from Long (1974) for two droplets of given masses (in kg)
+"""
 function long_kernel(xᵢ, xⱼ)
     rᵢ = r_from_mass(xᵢ) 
     rⱼ = r_from_mass(xⱼ)
@@ -52,9 +78,13 @@ function long_kernel(xᵢ, xⱼ)
     _interior_hydro_kernel(1.0, E_coll, r_sum, tv_diff)
 end
 
-# Other Functions
+"""
+    terminal_v(x)
+
+Compute terminal velocity of a droplet of given mass (in kg) following the
+parameterization of Beard (1976)
+"""
 function terminal_v(x)
-    # Beard (1976)
     r = r_from_mass(x)
     d = 2 * r * 1e6 # diameter, m -> μm
     x = x * 1e3 # mass, kg -> g
@@ -76,12 +106,17 @@ function terminal_v(x)
     tv = 1e-2 * α * x_to_beta # cm/s -> m/s
 end
 
-# Pre-compute collison kernels
-function kernels(x, kernel)
+"""
+    kernels(x::AbstractArray{FT, 1}, kernel::Symbol) where {FT <: AbstractFloat}
+
+Pre-compute and cache pair-wise collision kernels for a 1D binned discretization
+of mass space.
+"""
+function kernels(x::AbstractArray{FT, 1}, kernel::Symbol) where {FT <: AbstractFloat}
 
   m = length(x)
-  ck = zeros(Float64, m, m)
-  cck = zeros(Float64, m, m)
+  ck = zeros(FT, m, m)
+  cck = zeros(FT, m, m)
 
   # Compute collision kernel for all potential bin interactions
   for j ∈ 1:m

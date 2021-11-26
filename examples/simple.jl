@@ -69,6 +69,8 @@ for i in 1:nt
 end
 
 println("End; press any key to close.")
+xxx = readline()
+
 # using NPZ
 # for (i, g) in enumerate(g_plots)
 #     file_fn = @sprintf "output_%03d.npy" i
@@ -77,7 +79,6 @@ println("End; press any key to close.")
 #     npzwrite(file_pth, g)
 # end
 # npzwrite("output/r_grid.npy", model.rᵢ)
-# xxx = readline()
 
 # using NPZ
 # for (i, g) in enumerate(g_diags)
