@@ -1,7 +1,7 @@
 name = "Coad"
 uuid = "3c209b1d-894b-49f9-b6fc-d6828dace04e"
 authors = ["Daniel Rothenberg <daniel@danielrothenberg.com>"]
-version = "0.1.0"
+version = "1.0.0"
 
 [deps]
 CPUTime = "a9c8d775-2e2e-55fc-8582-045d282d599e"
