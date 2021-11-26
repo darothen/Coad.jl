@@ -18,6 +18,7 @@ abstract type AbstractSizeDist{FT} end
 
 include("util.jl")
 include("size_dists.jl")
+include("time.jl")
 include("coad1d.jl")
 
 export

@@ -30,15 +30,15 @@ p = plot(
 )
 display(p)
 
-
+t = Timestamp(0)
 tmax = 60*60 + 1 # seconds
 Δt = 5.0 # s
-Δt_diag = 1 * 60
-Δt_plot = 5 * 60
+Δt_diag = 5 * 60
+Δt_plot = 10 * 60
 nt = ceil(Integer, tmax / Δt)
 
-is_diag_step(t; Δt_diag=Δt_diag) = t % Δt_diag == 0
-is_plot_step(t; Δt_plot=Δt_plot) = t % Δt_plot == 0
+is_diag_step(t; Δt_diag=Δt_diag) = t % Δt_diag == Timestamp(0)
+is_plot_step(t; Δt_plot=Δt_plot) = t % Δt_plot == Timestamp(0)
 
 ###
 # using Profile
@@ -51,34 +51,42 @@ is_plot_step(t; Δt_plot=Δt_plot) = t % Δt_plot == 0
 println("\n Beginning simulation...")
 println(" -----------------------")
 
-g_plots = []
+g_diags = []
 for i in 1:nt
-    t = i * Δt
+    global t += Δt
     step!(model, Δt)
 
+    mass_tot = sum(model.gᵢ)
+    @printf "t = %s | mass %10.3e\n" t mass_tot
+
     if is_diag_step(t)
-        mass_tot = sum(model.gᵢ)
-        @printf "    %4d mins | mass %10.3e\n" t/60 mass_tot
+        push!(g_diags, model.gᵢ[:])
     end
 
     if is_plot_step(t)
-        lmin = Integer(t/60)
-        push!(g_plots, model.gᵢ[:])
-        display(plot!(p, model.rᵢ*1e6, model.gᵢ*1e3, label = "t = $lmin min"))
+        display(plot!(p, model.rᵢ*1e6, model.gᵢ*1e3, label = "t = $(t.minutes) min"))
     end
 end
 
 println("End; press any key to close.")
+# using NPZ
+# for (i, g) in enumerate(g_plots)
+#     file_fn = @sprintf "output_%03d.npy" i
+#     @printf "%03d %s %10.3e \n" i file_fn maximum(g)
+#     file_pth = joinpath("output", file_fn)
+#     npzwrite(file_pth, g)
+# end
+# npzwrite("output/r_grid.npy", model.rᵢ)
 # xxx = readline()
 
-using NPZ
-for (i, g) in enumerate(g_plots)
-    file_fn = @sprintf "output_%03d.npy" i
-    @printf "%03d %s %10.3e \n" i file_fn maximum(g)
-    file_pth = joinpath("output", file_fn)
-    npzwrite(file_pth, g)
-end
-npzwrite("output/r_grid.npy", model.rᵢ)
+# using NPZ
+# for (i, g) in enumerate(g_diags)
+#     file_fn = @sprintf "output_%03d.npy" i
+#     @printf "%03d %s %10.3e \n" i file_fn maximum(g)
+#     file_pth = joinpath("output", file_fn)
+#     npzwrite(file_pth, g)
+# end
+# npzwrite("output/r_grid.npy", model.rᵢ)
 
 
 # Set up integrator
